@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onDestroy, onMount } from 'svelte';
-	import { autoRun, compileLog, files, isRunning, isSaved, runCode, type File } from './repl/state';
+	import { autoRun, compileLog, files, isRunning, isSaved, runCode, IO, type File } from './repl/state';
 	import { debounceFunction } from './utilities';
 
 	let cjConsole: HTMLElement;
@@ -24,8 +24,48 @@
 		cjConsole.innerHTML = '';
 		cjOutput.innerHTML = '';
 
+		// Create wrapper class for System.in redirection
+		const wrapperCode = `
+import java.io.ByteArrayInputStream;
+import java.io.InputStream;
+import java.lang.reflect.Method;
+
+public class SystemInWrapper {
+	   public static void main(String[] args) throws Exception {
+	       String input = "${$IO.replace(/\n/g, '\\n').replace(/"/g, '\\"')}";
+	       String mainClassName = "${deriveMainClass($files[0])}";
+	       
+	       // Set System.in to the provided input
+	       InputStream originalIn = System.in;
+	       try {
+	           ByteArrayInputStream inputStream = new ByteArrayInputStream(input.getBytes());
+	           System.setIn(inputStream);
+	           
+	           // Load and run the main class
+	           Class<?> mainClass = Class.forName(mainClassName);
+	           Method mainMethod = mainClass.getMethod("main", String[].class);
+	           
+	           mainMethod.invoke(null, (Object) new String[0]);
+	       } catch (Exception e) {
+	           e.printStackTrace();
+	       } finally {
+	           // Restore original System.in
+	           System.setIn(originalIn);
+	       }
+	   }
+}`;
+
+		// Add wrapper to files temporarily
+		const wrapperFile = { path: 'SystemInWrapper.java', content: wrapperCode };
+		const allFiles = [...$files, wrapperFile];
+		
 		const classPath = '/app/tools.jar:/files/';
-		const sourceFiles = $files.map((file) => '/str/' + file.path);
+		const sourceFiles = allFiles.map((file) => '/str/' + file.path);
+		
+		// Add wrapper file to CheerpJ
+		const encoder = new TextEncoder();
+		cheerpjAddStringFile('/str/SystemInWrapper.java', encoder.encode(wrapperCode));
+		
 		const code = await cheerpjRunMain(
 			'com.sun.tools.javac.Main',
 			classPath,
@@ -34,7 +74,9 @@
 			'/files/',
 			'-Xlint'
 		);
-		if (code === 0) await cheerpjRunMain(deriveMainClass($files[0]), classPath);
+		
+		// Run the wrapper instead of the main class directly
+		if (code === 0) await cheerpjRunMain('SystemInWrapper', classPath);
 
 		// in case nothing is written on cjConsole and cjOutput
 		// manually unflag $isRunning
