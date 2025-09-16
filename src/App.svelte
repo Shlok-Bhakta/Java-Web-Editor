@@ -4,7 +4,7 @@
 </script>
 
 <div class="bg-black h-screen w-full">
-  <Editor template_path="Java-Web-Editor/templates/scanner"/>
+  <Editor template_path="/templates/scanner"/>
 </div>
 
 

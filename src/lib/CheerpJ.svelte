@@ -59,7 +59,7 @@ public class SystemInWrapper {
 		const wrapperFile = { path: 'SystemInWrapper.java', content: wrapperCode };
 		const allFiles = [...$files, wrapperFile];
 		
-		const classPath = '/app/tools.jar:/files/';
+		const classPath = '/app/Java-Web-Editor/tools.jar:/files/';
 		const sourceFiles = allFiles.map((file) => '/str/' + file.path);
 		
 		// Add wrapper file to CheerpJ
