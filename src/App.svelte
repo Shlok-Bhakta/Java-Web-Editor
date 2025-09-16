@@ -4,7 +4,7 @@
 </script>
 
 <div class="bg-black h-screen w-full">
-  <Editor template_path="/templates/hello"/>
+  <Editor template_path="/templates/scanner"/>
 </div>
 
 

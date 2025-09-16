@@ -1,6 +1,6 @@
 <script lang="ts">
   import { on } from 'svelte/events';
-    import { files, runCode } from './repl/state';
+    import { files, runCode, IO } from './repl/state';
   import { onMount } from 'svelte';
     type EditorProps = {
         template_path: string;
@@ -40,7 +40,16 @@
     class="bg-amber-300 w-2xl h-64"
     >
     </textarea>
-    
+
+    <textarea
+    bind:value={$IO}
+    placeholder="IO"
+    class="bg-amber-300 w-2xl h-64"
+    >
+    </textarea>
+
+
+
     <button onclick={() => {console.log('run'); $runCode = true;}} class="w-30 bg-amber-300 h-20">Run</button>
 {/await}
 

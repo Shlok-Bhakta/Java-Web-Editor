@@ -33,4 +33,6 @@ export const isSaved = writable<boolean>(true);
 
 export const runCode = writable<boolean>(false);
 
+export const IO = writable<string>('');
+
 export const compileLog = writable<string>('');
