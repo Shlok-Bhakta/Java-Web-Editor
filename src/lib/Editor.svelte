@@ -17,7 +17,7 @@
                 filedata = data;
             }).catch(err => { 
                 console.log(err)
-                $files = [{ path: 'Main.java', content: "public class Main { public static void main(String[] args) { System.out.println(\"Something failed in the fetch. Contact a TA.\"); }}" }];
+                $files = [{ path: 'Main.java', content: "" }];
                 return;
             });
         for (let i = 0; i < filedata.length; i++) {
