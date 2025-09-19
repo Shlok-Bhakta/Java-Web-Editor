@@ -4,7 +4,6 @@ import {
 	createLocalStorage,
 	createIndexedDBStorage
 } from '@macfja/svelte-persistent-store';
-import type { Fiddle } from '../compress-fiddle';
 
 export type File = {
 	path: string;
@@ -20,7 +19,6 @@ export const isSidebarOpen = persist(writable(true), createLocalStorage(), 'isSi
 export const fiddleTitle = writable<string>('');
 export const fiddleUpdated = writable<Date | undefined>();
 
-export const favourites = persist(writable<Fiddle[]>([]), createIndexedDBStorage(), 'favourites');
 
 // If loaded from favourites, this is the index of this fiddle in favourites
 export const favouriteIndex = writable<number>(-1);
