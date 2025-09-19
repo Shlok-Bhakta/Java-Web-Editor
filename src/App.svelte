@@ -3,12 +3,21 @@
   import CheerpJ from './lib/CheerpJ.svelte';
   import { onMount } from 'svelte';
 
-  const path = window.location.pathname;
-  console.log(path);
+  let template_path = '';
+
+  onMount(() => {
+    const url = new URL(window.location.href);
+    const file = url.searchParams.get('file') || 'scanner';
+    const base = import.meta.env.BASE_URL;
+    template_path = `${base}templates/${file}`;
+    console.log(template_path);
+  });
 </script>
 
 <div class="bg-black h-screen w-full">
-  <Editor template_path={path}/>
+  {#if template_path !== ''}
+  <Editor {template_path}/>
+  {/if}
 </div>
 
 
