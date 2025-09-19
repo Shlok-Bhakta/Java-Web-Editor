@@ -11,6 +11,7 @@ declare global {
     const dumpClass: any;
     const dumpAllThreads: any;
     const cheerpjAddStringFile: any;
+    const cheerpOSAddStringFile: any;
 }
 
 export {};

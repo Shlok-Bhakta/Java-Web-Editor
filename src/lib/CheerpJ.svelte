@@ -1,7 +1,6 @@
 <script lang="ts">
 	import { onDestroy, onMount } from 'svelte';
 	import { autoRun, compileLog, files, isRunning, isSaved, runCode, IO, type File } from './repl/state';
-	import { debounceFunction } from './utilities';
 
 	let cjConsole: HTMLElement;
 	let cjOutput: HTMLElement;
@@ -89,7 +88,7 @@ public class SystemInWrapper {
 		
 		// Add wrapper file to CheerpJ
 		const encoder = new TextEncoder();
-		cheerpjAddStringFile('/str/SystemInWrapper.java', encoder.encode(wrapperCode));
+		cheerpOSAddStringFile('/str/SystemInWrapper.java', encoder.encode(wrapperCode));
 		
 		const code = await cheerpjRunMain(
 			'com.sun.tools.javac.Main',
@@ -120,7 +119,6 @@ public class SystemInWrapper {
 		}
 	}
 
-	const debounceRunCheerpj = debounceFunction(runCheerpj, 500);
 
 	let unsubSaveFiles: () => void;
 	let unsubRunCode: () => void;
@@ -128,7 +126,7 @@ public class SystemInWrapper {
 	$effect(() => {
 		if ($runCode) {
 				$runCode = false;
-			($autoRun) ? debounceRunCheerpj() : runCheerpj();
+			($autoRun) ?  runCheerpj() : runCheerpj();
 		}
 	});
 	onMount(async () => {
@@ -146,7 +144,7 @@ public class SystemInWrapper {
 			try {
 				const encoder = new TextEncoder();
 				for (const file of $files) {
-					cheerpjAddStringFile('/str/' + file.path, encoder.encode(file.content));
+					cheerpOSAddStringFile('/str/' + file.path, encoder.encode(file.content));
 				}
 				$isSaved = true;
 				if ($autoRun) $runCode = true;
@@ -173,7 +171,7 @@ public class SystemInWrapper {
 			subtree: true,
 		});
 
-		// await runCheerpj();
+		await runCheerpj();
 	});
 
 	onDestroy(() => {
