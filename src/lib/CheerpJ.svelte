@@ -5,38 +5,41 @@
 	let cjConsole: HTMLElement;
 	let cjOutput: HTMLElement;
 	let cjOutputObserver: MutationObserver;
+	
+	// Multi-entry compilation cache to avoid recompiling unchanged code
+	let compilationCache = new Map<string, boolean>(); // hash -> isCompiled
+	const MAX_CACHE_SIZE = 10; // Keep last 10 different programs cached
+	
+	function getFilesHash(files: File[]): string {
+		return files.map(f => f.path + ':' + f.content).join('|');
+	}
+	
+	function addToCache(hash: string) {
+		// Add to cache and limit size
+		compilationCache.set(hash, true);
+		
+		// If cache is too big, remove oldest entries
+		if (compilationCache.size > MAX_CACHE_SIZE) {
+			const keysToDelete = Array.from(compilationCache.keys()).slice(0, compilationCache.size - MAX_CACHE_SIZE);
+			keysToDelete.forEach(key => compilationCache.delete(key));
+		}
+	}
 
 	async function startCheerpj() {
 		await cheerpjInit({
 			status: 'none',
 			preloadResources: [{
-				"/lt/8/jre/lib/rt.jar":[0,131072,10223616,10878976,11403264,11665408,11927552,12189696,12320768,12582912,14942208,15073280,15204352,15335424,15466496,15597568,17694720,17956864,18350080,18612224,19005440,19136512,20840448,21102592,21233664,21757952,22020096,22806528,22937600,23592960,23724032,26869760],
-				"/lt/etc/users":[0,131072],
-				"/lt/etc/localtime":[],
-				"/lt/8/jre/lib/cheerpj-awt.jar":[0,131072],
-				"/lt/8/lib/ext/meta-index":[0,131072],
-				"/lt/8/lib/ext":[],
-				"/lt/8/lib/ext/index.list":[],
-				"/lt/8/lib/ext/localedata.jar":[0,131072,1048576,1179648],
-				"/lt/8/jre/lib/jsse.jar":[0,131072,786432,917504],
-				"/lt/8/jre/lib/jce.jar":[0,131072],
-				"/lt/8/jre/lib/charsets.jar":[0,131072,1703936,1835008],
-				"/lt/8/jre/lib/resources.jar":[0,131072,917504,1179648],
-				"/lt/8/jre/lib/javaws.jar":[0,131072,1441792,1703936],
-				"/lt/8/lib/ext/sunec.jar":[0,131072],
-				"/lt/8/lib/ext/sunjce_provider.jar":[0,262144],
-				"/lt/8/lib/ext/zipfs.jar":[0,131072],
-				"/lt/8/jre/lib/meta-index":[0,131072],
-				"/lt/8/jre/lib":[],
-				"/lt/8/lib/ct.sym":[],
-				"/lt/8/lib/currency.data":[0,131072],
-				"/lt/8/lib/currency.properties":[],
+				// Keep only essential JRE components - removed AWT, networking, crypto, locale stuff
+				"/lt/8/jre/lib/rt.jar":[0,131072,10223616,10878976,11403264,11665408,11927552,12189696,12320768,12582912],
+				"/lt/8/jre/lib/charsets.jar":[0,131072],
+				"/lt/8/jre/lib/resources.jar":[0,131072],
 			},
 			"/Java-Web-Editor/tools.jar"
 		]
 		});
-		const display = document.getElementById("output");
-		cheerpjCreateDisplay(-1, -1, display);
+		// Skip GUI display creation - we only need console output, not Swing/AWT rendering
+		// const display = document.getElementById("output");
+		// cheerpjCreateDisplay(-1, -1, display);
 	}
 
 	async function runCheerpj() {
@@ -46,7 +49,11 @@
 		console.info('compileAndRun');
 		$isRunning = true;
 		cjConsole.innerHTML = '';
-		cjOutput.innerHTML = '';
+		if (cjOutput) cjOutput.innerHTML = '';
+
+		// Check if compilation is needed
+		const currentHash = getFilesHash($files);
+		const needsCompilation = !compilationCache.has(currentHash);
 
 		// Create wrapper class for System.in redirection
 		const wrapperCode = `
@@ -79,28 +86,43 @@ public class SystemInWrapper {
 	   }
 }`;
 
-		// Add wrapper to files temporarily
-		const wrapperFile = { path: 'SystemInWrapper.java', content: wrapperCode };
-		const allFiles = [...$files, wrapperFile];
-		
 		const classPath = '/app/Java-Web-Editor/tools.jar:/files/';
-		const sourceFiles = allFiles.map((file) => '/str/' + file.path);
+		let compileCode = 0;
+
+		// Only compile if files have changed
+		if (needsCompilation) {
+			console.log('Files changed, recompiling...');
+			
+			// Add wrapper to files temporarily
+			const wrapperFile = { path: 'SystemInWrapper.java', content: wrapperCode };
+			const allFiles = [...$files, wrapperFile];
+			const sourceFiles = allFiles.map((file) => '/str/' + file.path);
+			
+			// Add wrapper file to CheerpJ
+			const encoder = new TextEncoder();
+			cheerpOSAddStringFile('/str/SystemInWrapper.java', encoder.encode(wrapperCode));
+			
+			compileCode = await cheerpjRunMain(
+				'com.sun.tools.javac.Main',
+				classPath,
+				...sourceFiles,
+				'-d',
+				'/files/',
+				'-Xlint'
+			);
+			
+			if (compileCode === 0) {
+				addToCache(currentHash);
+				console.log(`Compilation successful, added to cache (${compilationCache.size}/${MAX_CACHE_SIZE})`);
+			}
+		} else {
+			console.log(`Using cached compilation - skipping javac (cache: ${compilationCache.size}/${MAX_CACHE_SIZE})`);
+		}
 		
-		// Add wrapper file to CheerpJ
-		const encoder = new TextEncoder();
-		cheerpOSAddStringFile('/str/SystemInWrapper.java', encoder.encode(wrapperCode));
-		
-		const code = await cheerpjRunMain(
-			'com.sun.tools.javac.Main',
-			classPath,
-			...sourceFiles,
-			'-d',
-			'/files/',
-			'-Xlint'
-		);
-		
-		// Run the wrapper instead of the main class directly
-		if (code === 0) await cheerpjRunMain('SystemInWrapper', classPath);
+		// Run the wrapper (even if using cached compilation)
+		if (compileCode === 0) {
+			await cheerpjRunMain('SystemInWrapper', classPath);
+		}
 
 		// in case nothing is written on cjConsole and cjOutput
 		// manually unflag $isRunning
@@ -133,9 +155,11 @@ public class SystemInWrapper {
 		await startCheerpj();
 
 		cjConsole = document.getElementById("console")!;
-		cjOutput = document.getElementById("cheerpjDisplay")!;
-		// remove useless loading screen
-		cjOutput.classList.remove("cheerpjLoading");
+		cjOutput = document.getElementById("cheerpjDisplay");
+		// remove useless loading screen (only if display exists)
+		if (cjOutput) {
+			cjOutput.classList.remove("cheerpjLoading");
+		}
 
 		unsubSaveFiles = files.subscribe(() => {
 		if ($isRunning) {
@@ -157,7 +181,7 @@ public class SystemInWrapper {
 		// code execution (flagged by isRunning) is considered over
 		// when cjConsole or cjOutput are updated
 		cjOutputObserver = new MutationObserver(() => {
-			if ($isRunning && (cjConsole.innerHTML || cjOutput.innerHTML)) {
+			if ($isRunning && (cjConsole.innerHTML || (cjOutput && cjOutput.innerHTML))) {
 				$isRunning = false;
 				if (!$isSaved) files.update((files) => files);
 			}
@@ -166,10 +190,12 @@ public class SystemInWrapper {
 			childList: true,
 			subtree: true,
 		});
-		cjOutputObserver.observe((cjOutput), {
-			childList: true,
-			subtree: true,
-		});
+		if (cjOutput) {
+			cjOutputObserver.observe((cjOutput), {
+				childList: true,
+				subtree: true,
+			});
+		}
 
 		await runCheerpj();
 	});
