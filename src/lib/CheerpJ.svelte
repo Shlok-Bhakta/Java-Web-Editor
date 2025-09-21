@@ -2,13 +2,20 @@
 	import { onDestroy, onMount } from 'svelte';
 	import { autoRun, compileLog, files, isRunning, isSaved, runCode, IO, type File } from './repl/state';
 
+	// Backend status for UI
+	let backendStatus = $state<'backend' | 'cheerpj' | 'checking'>('checking');
+
 	let cjConsole: HTMLElement;
-	let cjOutput: HTMLElement;
+	let cjOutput: HTMLElement | null;
 	let cjOutputObserver: MutationObserver;
 	
 	// Multi-entry compilation cache to avoid recompiling unchanged code
 	let compilationCache = new Map<string, boolean>(); // hash -> isCompiled
 	const MAX_CACHE_SIZE = 10; // Keep last 10 different programs cached
+	
+	// Backend configuration
+	const BACKEND_URL = 'http://localhost:8080';
+	let useBackend = true; // Try backend first, fallback to CheerpJ
 	
 	function getFilesHash(files: File[]): string {
 		return files.map(f => f.path + ':' + f.content).join('|');
@@ -22,6 +29,58 @@
 		if (compilationCache.size > MAX_CACHE_SIZE) {
 			const keysToDelete = Array.from(compilationCache.keys()).slice(0, compilationCache.size - MAX_CACHE_SIZE);
 			keysToDelete.forEach(key => compilationCache.delete(key));
+		}
+	}
+
+	// Try Go backend compilation
+	async function tryBackendCompile(): Promise<boolean> {
+		if (!useBackend) return false;
+		
+		try {
+			const response = await fetch(`${BACKEND_URL}/compile`, {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json',
+				},
+				body: JSON.stringify({
+					code: $files[0].content,
+					input: $IO
+				}),
+				signal: AbortSignal.timeout(10000) // 10 second timeout
+			});
+
+			if (!response.ok) {
+				console.warn('Backend compile failed:', response.statusText);
+				const consoleEl = document.getElementById("console");
+				if (consoleEl) {
+					consoleEl.innerHTML = `❌ Backend error: ${response.statusText}`;
+				}
+				return false;
+			}
+
+			const result = await response.json();
+			
+			// Display output in console
+			const consoleEl = document.getElementById("console");
+			if (consoleEl) {
+				consoleEl.innerHTML = result.output || '';
+				if (result.error) {
+					consoleEl.innerHTML += `\nError: ${result.error}`;
+				}
+			}
+			
+			console.log(`✅ Backend compilation completed in ${result.time_ms}ms`);
+			backendStatus = 'backend';
+			return result.success;
+			
+		} catch (error) {
+			console.warn('Backend unavailable:', error);
+			const consoleEl = document.getElementById("console");
+			if (consoleEl) {
+				consoleEl.innerHTML = `❌ Backend service unavailable. Is it running on ${BACKEND_URL}?`;
+			}
+			useBackend = false; // Disable backend for this session
+			return false;
 		}
 	}
 
@@ -43,7 +102,7 @@
 	}
 
 	async function runCheerpj() {
-		console.log('runCheerpj');
+		console.log('runCheerpj - trying backend first');
 		if ($isRunning) return;
 
 		console.info('compileAndRun');
@@ -51,6 +110,25 @@
 		cjConsole.innerHTML = '';
 		if (cjOutput) cjOutput.innerHTML = '';
 
+		// Try backend (API-only mode)
+		const backendSuccess = await tryBackendCompile();
+		$isRunning = false;
+		
+		const consoleEl = document.getElementById("console");
+		if (consoleEl) {
+			$compileLog = consoleEl.innerText;
+		}
+		
+		if (!backendSuccess) {
+			backendStatus = 'checking';
+		}
+		return;
+
+		// DISABLED: Fallback to CheerpJ (keep code for later)
+		/* 
+		console.log('Using CheerpJ fallback...');
+		backendStatus = 'cheerpj';
+		
 		// Check if compilation is needed
 		const currentHash = getFilesHash($files);
 		const needsCompilation = !compilationCache.has(currentHash);
@@ -128,6 +206,7 @@ public class SystemInWrapper {
 		// manually unflag $isRunning
 		if ($isRunning) $isRunning = false;
 		$compileLog = cjConsole.innerText;
+		*/
 	}
 
 	function deriveMainClass(file: File) {
@@ -212,3 +291,8 @@ public class SystemInWrapper {
 		if (cjOutputObserver) cjOutputObserver.disconnect();
 	});
 </script>
+
+<!-- Backend Status Indicator -->
+<div class="fixed bottom-2 right-2 text-xs px-2 py-1 rounded {backendStatus === 'backend' ? 'bg-green-600' : 'bg-red-600'} text-white">
+	{backendStatus === 'backend' ? '🚀 Go Backend' : '❌ API Unavailable'}
+</div>
