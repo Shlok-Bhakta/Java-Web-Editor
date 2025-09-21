@@ -144,6 +144,9 @@ public class SystemInWrapper {
 
 	let unsubSaveFiles: () => void;
 	let unsubRunCode: () => void;
+	
+	// Debounce file operations to reduce I/O overhead
+	let fileWriteTimeout: ReturnType<typeof setTimeout> | null = null;
 
 	$effect(() => {
 		if ($runCode) {
@@ -165,16 +168,20 @@ public class SystemInWrapper {
 		if ($isRunning) {
 			$isSaved = false;
 		} else {
-			try {
-				const encoder = new TextEncoder();
-				for (const file of $files) {
-					cheerpOSAddStringFile('/str/' + file.path, encoder.encode(file.content));
+			// Debounce file writes to avoid excessive I/O during typing
+			if (fileWriteTimeout) clearTimeout(fileWriteTimeout);
+			fileWriteTimeout = setTimeout(() => {
+				try {
+					const encoder = new TextEncoder();
+					for (const file of $files) {
+						cheerpOSAddStringFile('/str/' + file.path, encoder.encode(file.content));
+					}
+					$isSaved = true;
+					if ($autoRun) $runCode = true;
+				} catch (error) {
+					console.error('Error writing files to CheerpJ', error);
 				}
-				$isSaved = true;
-				if ($autoRun) $runCode = true;
-			} catch (error) {
-				console.error('Error writing files to CheerpJ', error);
-			}
+			}, 150); // 150ms debounce - responsive but not excessive
 		}
 		});
 
