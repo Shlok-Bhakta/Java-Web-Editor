@@ -106,8 +106,18 @@ test.describe('Java Editor Performance Tests - Potato Mode', () => {
         });
         
         // === MEASUREMENT 3: Second Manual Run ===
-        console.log('=== POTATO MEASURING: Second Manual Run ===');
+        console.log('=== POTATO MEASURING: Second Manual Run (with code change to force recompilation) ===');
         await page.waitForTimeout(2000); // Wait for things to settle
+        
+        // Make a small change to force recompilation (bypass cache)
+        await page.evaluate(() => {
+          const editor = document.querySelector('textarea.bg-amber-300') as HTMLTextAreaElement;
+          if (editor) {
+            editor.value = editor.value + '\n// test change';
+            editor.dispatchEvent(new Event('input', { bubbles: true }));
+          }
+        });
+        await page.waitForTimeout(500); // Wait for change to register
         
         const secondRunStart = performance.now();
         await page.click('button:has-text("Run")');
