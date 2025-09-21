@@ -14,7 +14,7 @@
 	const MAX_CACHE_SIZE = 10; // Keep last 10 different programs cached
 	
 	// Backend configuration
-	const BACKEND_URL = 'http://localhost:8080';
+	const BACKEND_URL = 'https://javac.shlokbhakta.dev';
 	let useBackend = true; // Try backend first, fallback to CheerpJ
 	
 	function getFilesHash(files: File[]): string {
